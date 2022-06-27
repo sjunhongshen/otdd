@@ -1188,7 +1188,7 @@ class FeatureCost():
         elif b.ndim == 2: return (1,*b.shape)
         elif b.ndim == 1: return (1,1,b.shape[0])
 
-    def _batchify_computation(self, X, side='x', slices=20):
+    def _batchify_computation(self, X, side='x', slices=40):
         if side == 'x':
             out = torch.cat([self.src_emb(b).to('cpu') for b in torch.chunk(X, slices, dim=0)])
         else:
