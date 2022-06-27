@@ -235,16 +235,6 @@ class DatasetDistance():
         else:
             logger.warning('DatasetDistance initialized with empty data')
 
-        if self.src_embedding is not None or self.tgt_embedding is not None:
-            self.feature_cost = partial(FeatureCost,
-                                   src_emb = self.src_embedding,
-                                   src_dim = (3,28,28),
-                                   tgt_emb = self.tgt_embedding,
-                                   tgt_dim = (3,28,28),
-                                   p = self.p, device=self.device)
-
-        self.src_embedding = None
-        self.tgt_embedding = None
 
 
     def _load_infer_labels(self, D, classes=None, reindex=None, reindex_start=None):
