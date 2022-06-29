@@ -160,6 +160,7 @@ class DatasetDistance():
                  ## Gaussian Approximation Args
                  diagonal_cov=False,
                  min_labelcount=2,
+                 max_labelcount = 50000,
                  online_stats=True,
                  sqrt_method='spectral',
                  sqrt_niters=20,
@@ -171,7 +172,7 @@ class DatasetDistance():
                  eigen_correction=False,
                  device='cpu',
                  precision='single',
-                 verbose=1, *args, **kwargs):
+                 verbose=1,load_prev_dyy1=None, *args, **kwargs):
 
         self.method = method
         assert self.method in ['precomputed_labeldist', 'augmentation', 'jdot']
@@ -198,6 +199,7 @@ class DatasetDistance():
         self.online_stats = online_stats
         self.coupling_method = coupling_method
         self.min_labelcount = min_labelcount
+        self.max_labelcount = max_labelcount
         self.nworkers_stats = nworkers_stats
         self.nworkers_dists = nworkers_dists
         self.sqrt_method = sqrt_method
@@ -220,7 +222,7 @@ class DatasetDistance():
         self.label_distances = None
         self.X1, self.X2 = None, None
         self.Y1, self.Y2 = None, None
-        self._pwlabel_stats_1 = None
+        self._pwlabel_stats_1 = None if load_prev_dyy1 is None else load_prev_dyy1
         self._pwlabel_stats_2 = None
 
         self.D1 = D1
@@ -235,6 +237,16 @@ class DatasetDistance():
         else:
             logger.warning('DatasetDistance initialized with empty data')
 
+        #if self.src_embedding is not None or self.tgt_embedding is not None:
+        #    self.feature_cost = partial(FeatureCost,
+        #                           src_emb = self.src_embedding,
+        #                           src_dim = (3,28,28),
+        #                           tgt_emb = self.tgt_embedding,
+        #                           tgt_dim = (3,28,28),
+        #                           p = self.p, device=self.device)
+
+        #self.src_embedding = None
+        #self.tgt_embedding = None
 
 
     def _load_infer_labels(self, D, classes=None, reindex=None, reindex_start=None):
@@ -285,7 +297,7 @@ class DatasetDistance():
             vals1, cts1 = torch.unique(targets1[idxs1], return_counts=True)
 
         ## Ignore everything with a label occurring less than k times
-        self.V1 = torch.sort(vals1[cts1 >= self.min_labelcount])[0]
+        self.V1 = torch.sort(vals1[(cts1 >= self.min_labelcount) & (cts1 <= self.max_labelcount)])[0]
 
         if (targets2 is None) or self.ignore_target_labels:
             reindex_start = len(self.V1) if (self.loss == 'sinkhorn' and self.debiased_loss) else True
@@ -306,16 +318,13 @@ class DatasetDistance():
             vals2, cts2 = torch.unique(targets2[idxs2], return_counts=True)
 
         ## Ignore everything with a label occurring less than k times
-        self.V2 = torch.sort(vals2[cts2 >= self.min_labelcount])[0]
-
+        self.V2 = torch.sort(vals2[(cts2 >= self.min_labelcount) & (cts2 <= self.max_labelcount)])[0]
 
         self.classes1 = [classes1[i] for i in self.V1]
         self.classes2 = [classes2[i] for i in self.V2]
 
-
         if self.method == 'jdot': ## JDOT only works if same labels on both datasets
             assert torch.all(self.V1 == self.V2)
-
 
         ## Keep track of real classes vs indices (always 0 to n)(useful if e.g., missing classes):
         self.class_to_idx_1 = {i: c for i, c in enumerate(self.V1)}
@@ -483,7 +492,6 @@ class DatasetDistance():
 
         elif self.inner_ot_method == 'exact':
             ## In this case, need to load data *before* computing label stats.
-
             if (self.X1 is None) or (self.X2 is None):
                 self._load_datasets(maxsamples=None)  # for now, will use *all* data, to be equiv  to Gaussian
 
@@ -515,7 +523,6 @@ class DatasetDistance():
         else:
             raise ValueError()
 
-
         if self.debiased_loss and not self.symmetric_tasks:
             ## Then we also need within-collection label distances
             if self._pwlabel_stats_1 is None:
@@ -528,6 +535,9 @@ class DatasetDistance():
                     DYY1 = pwdist(Means[0])
                     DYY1_means = DYY1
                 else: # Exact
+                    print("compute dyy1")
+                    if not isinstance(self.feature_cost, str):
+                        self.feature_cost.sides = 'xx'
                     DYY1 = pwdist(self.X1, self.Y1)
             else:
                 if self.inner_ot_method == 'gaussian_approx':
@@ -535,6 +545,7 @@ class DatasetDistance():
                 elif self.inner_ot_method in ['naive_upperbound', 'means_only']:
                     DYY1, DYY1_means = [self._pwlabel_stats_1[k] for k in ['dlabs','dmeans']]
                 else:
+                    print("load dyy1")
                     DYY1 = self._pwlabel_stats_1['dlabs']
 
             if self._pwlabel_stats_2 is None:
@@ -547,6 +558,9 @@ class DatasetDistance():
                     DYY2 = pwdist(Means[1])
                     DYY2_means = DYY2
                 else: # Exact
+                    print("compute dyy2")
+                    if not isinstance(self.feature_cost, str):
+                        self.feature_cost.sides = 'yy'
                     DYY2 = pwdist(self.X2, self.Y2)
             else:
                 logger.info('Found pre-existing D2 label-label stats, will not recompute')
@@ -571,6 +585,9 @@ class DatasetDistance():
             DYY12    = pwdist(Means[0], Means[1])
             DYY12_means = DYY12
         else:
+            print("compute dyy12")
+            if not isinstance(self.feature_cost, str):
+                self.feature_cost.sides = 'xy'
             DYY12 = pwdist(self.X1,self.Y1,self.X2, self.Y2)
             DYY12_means = None
 
@@ -904,7 +921,7 @@ class DatasetDistance():
             ax[1].set_title('Label-to-label Distance')
             im, cbar = heatmap(LMD.cpu(), self.V1.tolist(), self.V2.tolist(), ax=ax[1],
                                cmap=cmap, cbar=cbar, cbarlabel=cbarlabel, **kwargs)
-
+            
         if xlabel: ax.set_xlabel(xlabel, fontsize=fontsize)
         if ylabel: ax.set_ylabel(ylabel, fontsize=fontsize)
         if save_path:
@@ -1182,36 +1199,42 @@ class FeatureCost():
         self.tgt_dim = tgt_dim
         self.p = p
         self.device = device
+        self.sides = None
 
     def _get_batch_shape(self, b):
         if b.ndim == 3: return b.shape
         elif b.ndim == 2: return (1,*b.shape)
         elif b.ndim == 1: return (1,1,b.shape[0])
 
-    def _batchify_computation(self, X, side='x', slices=500):
+    def _batchify_computation(self, X, side='x', slices=250):
+        slices = len(X)
         if side == 'x':
             out = torch.cat([self.src_emb(b).to('cpu') for b in torch.chunk(X, slices, dim=0)])
         else:
             out = torch.cat([self.tgt_emb(b).to('cpu') for b in torch.chunk(X, slices, dim=0)])
-        return out.to(X.device)
+        return out.to(self.device)
 
     def __call__(self, X1, X2):
         _orig_device = X1.device
         device = process_device_arg(self.device)
         if self.src_emb is not None:
             B1, N1, D1 = self._get_batch_shape(X1)
+            dim = self.src_dim if self.sides[0]  == 'x' else self.tgt_dim
+            emb = self.src_emb if self.sides[0]  == 'x' else self.tgt_emb
             try:
-                X1 = self.src_emb(X1.view(-1,*self.src_dim).to(self.device)).reshape(B1, N1, -1)
+                X1 = emb(X1.view(-1,*dim).to(self.device)).reshape(B1, N1, -1)
             except: # Memory error?
                 print('Batchifying feature distance computation')
-                X1 = self._batchify_computation(X1.view(-1,*self.src_dim).to(self.device), 'x').reshape(B1, N1, -1)
+                X1 = self._batchify_computation(X1.view(-1,*dim).to(self.device), side=self.sides[0]).reshape(B1, N1, -1)
         if self.tgt_emb is not None:
             B2, N2, D2 = self._get_batch_shape(X2)
+            emb = self.src_emb if self.sides[1]  == 'x' else self.tgt_emb
+            dim = self.src_dim if self.sides[1]  == 'x' else self.tgt_dim
             try:
-                X2 = self.tgt_emb(X2.view(-1,*self.tgt_dim).to(self.device)).reshape(B2, N2, -1)
+                X2 = emb(X2.view(-1,*dim).to(self.device)).reshape(B2, N2, -1)
             except:
                 print('Batchifying feature distance computation')
-                X2 = self._batchify_computation(X2.view(-1,*self.tgt_dim).to(self.device), 'y').reshape(B2, N2, -1)
+                X2 = self._batchify_computation(X2.view(-1,*dim).to(self.device), self.sides[1]).reshape(B2, N2, -1)
         if self.p == 1:
             c = geomloss.utils.distances(X1, X2)
         elif self.p == 2:
