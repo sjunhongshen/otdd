@@ -132,8 +132,8 @@ def extract_dataset_targets(d):
         indices = np.arange(len(dataset))
     else:
         indices = np.sort(indices)
-    targets = torch.LongTensor(targets)
-    indices = indices.astype(int)
+    # targets = torch.LongTensor(targets)
+    # indices = indices.astype(int)
 
     return targets, classes, indices
 
