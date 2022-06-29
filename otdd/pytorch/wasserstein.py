@@ -286,6 +286,7 @@ def pwdist_exact(X1, Y1, X2=None, Y2=None, symmetric=False, loss='sinkhorn',
 
     """
     device = process_device_arg(device)
+    
     if X2 is None:
         symmetric = True
         X2, Y2 = X1, Y1
@@ -326,20 +327,18 @@ def pwdist_exact(X1, Y1, X2=None, Y2=None, symmetric=False, loss='sinkhorn',
     else:
         raise ValueError('Wrong loss')
 
-
     logger.info('Computing label-to-label (exact) wasserstein distances...')
     pbar = tqdm(pairs, leave=False)
     pbar.set_description('Computing label-to-label distances')
     D = torch.zeros((n1, n2), device = device, dtype=X1.dtype)
     for i, j in pbar:
-        try:
-            D[i, j] = distance(X1[Y1==c1[i]].to(device), X2[Y2==c2[j]].to(device)).item()
-        except:
-            print("This is awkward. Distance computation failed. Geomloss is hard to debug" \
-                  "But here's a few things that might be happening: "\
-                  " 1. Too many samples with this label, causing memory issues" \
-                  " 2. Datatype errors, e.g., if the two datasets have different type")
-            sys.exit('Distance computation failed. Aborting.')
+        D[i, j] = distance(X1[Y1==c1[i]].to(device), X2[Y2==c2[j]].to(device)).item()
+        #except:
+        #    print("This is awkward. Distance computation failed. Geomloss is hard to debug" \
+        #          "But here's a few things that might be happening: "\
+        #          " 1. Too many samples with this label, causing memory issues" \
+        #          " 2. Datatype errors, e.g., if the two datasets have different type")
+        #    sys.exit('Distance computation failed. Aborting.')
         if symmetric:
             D[j, i] = D[i, j]
     return D
