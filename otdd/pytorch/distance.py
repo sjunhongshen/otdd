@@ -320,8 +320,8 @@ class DatasetDistance():
         ## Ignore everything with a label occurring less than k times
         self.V2 = torch.sort(vals2[(cts2 >= self.min_labelcount) & (cts2 <= self.max_labelcount)])[0]
 
-        self.classes1 = [classes1[i] for i in self.V1]
-        self.classes2 = [classes2[i] for i in self.V2]
+        self.classes1 = self.V1 #[classes1[i] for i in self.V1]
+        self.classes2 = self.V2 #[classes2[i] for i in self.V2]
 
         if self.method == 'jdot': ## JDOT only works if same labels on both datasets
             assert torch.all(self.V1 == self.V2)
