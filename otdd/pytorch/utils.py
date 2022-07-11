@@ -283,10 +283,11 @@ def load_full_dataset(data, targets=False, return_both_targets=False,
 
     if targets == 'infer':
         logger.warning('Performing clustering')
-        if Y is not None: # Save true targets before overwriting them with inferred
-            Y_true = Y
+        # if Y is not None: # Save true targets before overwriting them with inferred
+        #    Y_true = Y
         Y = labeling_function(X)
-
+        Y_true = Y
+        
         if force_label_alignment:
             K = torch.unique(Y_true).shape[0]
             M = [((Y == k) & (Y_true == l)).sum().item() for k,l in product(range(K),range(K))]
