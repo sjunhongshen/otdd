@@ -253,7 +253,7 @@ class DatasetDistance():
 
         if classes is not None:
             k = len(classes)
-            labeling_fun = lambda X: torch.LongTensor(k_means(X.numpy(), k)[1])
+            labeling_fun = lambda X: torch.LongTensor(k_means(X.clone().detach().cpu().numpy(), k)[1])
         else:
             labeling_fun = lambda X: torch.LongTensor(DBSCAN(eps=5, min_samples = 4).fit(X).labels_)
 
