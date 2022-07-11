@@ -251,7 +251,7 @@ class DatasetDistance():
 
     def _load_infer_labels(self, D, classes=None, reindex=None, reindex_start=None):
 
-        if classes:
+        if classes is not None:
             k = len(classes)
             labeling_fun = lambda X: torch.LongTensor(k_means(X.numpy(), k)[1])
         else:
